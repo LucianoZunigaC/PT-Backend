@@ -1,0 +1,100 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Proveedor {
+  id              BigInt            @id @default(autoincrement())
+  nombre          String
+  sitio_web       String?
+  productos       Producto[]
+  precios         Precio[]
+  redirecciones   Redireccion[]
+  errores_scraping ErrorScraping[]
+
+  @@map("proveedores")
+}
+
+model Categoria {
+  id        BigInt     @id @default(autoincrement())
+  nombre    String
+  productos Producto[]
+
+  @@map("categorias")
+}
+
+model Producto {
+  id           BigInt      @id @default(autoincrement())
+  nombre       String
+  marca        String?     // Marca del producto (ej: Polpaico, Melón, Robust)
+  descripcion  String?
+  link         String?     // URL directa al producto en la tienda
+  categoria_id BigInt?
+  proveedor_id BigInt?
+  categoria    Categoria?  @relation(fields: [categoria_id], references: [id])
+  proveedor    Proveedor?  @relation(fields: [proveedor_id], references: [id])
+  precios      Precio[]
+  redirecciones Redireccion[]
+
+  @@map("productos")
+}
+
+model Precio {
+  id                 BigInt    @id @default(autoincrement())
+  producto_id        BigInt?
+  proveedor_id       BigInt?
+  precio             Decimal
+  fecha_actualizacion DateTime  @default(now()) @db.Timestamptz()
+  producto           Producto? @relation(fields: [producto_id], references: [id])
+  proveedor          Proveedor?@relation(fields: [proveedor_id], references: [id])
+
+  @@map("precios")
+}
+
+model Usuario {
+  id           BigInt        @id @default(autoincrement())
+  nombre       String
+  email        String        @unique
+  tipo_usuario String        // 'final' or 'administrador'
+  busquedas    Busqueda[]
+  redirecciones Redireccion[]
+
+  @@map("usuarios")
+}
+
+model Busqueda {
+  id               BigInt    @id @default(autoincrement())
+  usuario_id       BigInt?
+  termino_busqueda String
+  fecha            DateTime  @default(now()) @db.Timestamptz()
+  usuario          Usuario?  @relation(fields: [usuario_id], references: [id])
+
+  @@map("busquedas")
+}
+
+model Redireccion {
+  id           BigInt    @id @default(autoincrement())
+  usuario_id   BigInt?
+  producto_id  BigInt?
+  proveedor_id BigInt?
+  fecha        DateTime  @default(now()) @db.Timestamptz()
+  usuario      Usuario?  @relation(fields: [usuario_id], references: [id])
+  producto     Producto? @relation(fields: [producto_id], references: [id])
+  proveedor    Proveedor?@relation(fields: [proveedor_id], references: [id])
+
+  @@map("redirecciones")
+}
+
+model ErrorScraping {
+  id             BigInt    @id @default(autoincrement())
+  proveedor_id   BigInt?
+  mensaje_error  String
+  fecha          DateTime  @default(now()) @db.Timestamptz()
+  proveedor      Proveedor?@relation(fields: [proveedor_id], references: [id])
+
+  @@map("errores_scraping")
+}
