@@ -59,6 +59,7 @@ model Usuario {
   id           BigInt        @id @default(autoincrement())
   nombre       String
   email        String        @unique
+  password     String
   tipo_usuario String        // 'final' or 'administrador'
   busquedas    Busqueda[]
   redirecciones Redireccion[]

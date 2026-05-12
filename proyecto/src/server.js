@@ -1,6 +1,8 @@
 import express from 'express';
 import cors from 'cors';
-import apiRoutes from './routes/api.routes.js';
+import routes from './routes/index.js';
+import logger from './utils/logger.js';
+import { connectRedis } from './utils/redis.js';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -14,8 +16,14 @@ BigInt.prototype.toJSON = function () {
 app.use(cors());
 app.use(express.json());
 
+// Log incoming requests
+app.use((req, res, next) => {
+  logger.info(`${req.method} ${req.url}`);
+  next();
+});
+
 // Rutas
-app.use('/api', apiRoutes);
+app.use('/api', routes);
 
 // Manejo de rutas no encontradas
 app.use((req, res) => {
@@ -24,10 +32,20 @@ app.use((req, res) => {
 
 // Manejo de errores global
 app.use((err, req, res, next) => {
-  console.error(err.stack);
+  logger.error(err.stack);
   res.status(500).json({ error: 'Error interno del servidor' });
 });
 
-app.listen(PORT, () => {
-  console.log(`Servidor corriendo en el puerto ${PORT}`);
-});
+const startServer = async () => {
+  try {
+    await connectRedis();
+    app.listen(PORT, () => {
+      logger.info(`Servidor corriendo en el puerto ${PORT}`);
+    });
+  } catch (error) {
+    logger.error('Failed to start server:', error);
+    process.exit(1);
+  }
+};
+
+startServer();
