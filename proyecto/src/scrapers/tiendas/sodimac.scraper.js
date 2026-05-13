@@ -5,98 +5,71 @@ export class SodimacScraper extends BaseScraper {
     super('Sodimac', 'https://sodimac.falabella.com/sodimac-cl');
   }
 
-  // Método de Búsqueda (PLP)
+  // Helper para buscar los productos recursivamente dentro del JSON anidado
+  _findProductsInJson(obj) {
+    if (!obj) return [];
+    if (Array.isArray(obj) && obj.length > 0 && obj[0].productId) return obj;
+    if (typeof obj === 'object') {
+      for (let k in obj) {
+        const res = this._findProductsInJson(obj[k]);
+        if (res.length > 0) return res;
+      }
+    }
+    return [];
+  }
+
   async scrape(terminoBusqueda, maxProductos = 20) {
     try {
       await this.init();
       console.log(`[Sodimac] Buscando: "${terminoBusqueda}" (max ${maxProductos} productos)`);
       
-      const todosLosProductos = [];
-      let pagina = 1;
+      const url = `${this.baseUrl}/search?Ntt=${encodeURIComponent(terminoBusqueda)}`;
+      await this.page.goto(url, { waitUntil: 'domcontentloaded' });
+      await this.page.waitForTimeout(2000);
 
-      while (todosLosProductos.length < maxProductos) {
-        const url = pagina === 1
-          ? `${this.baseUrl}/search?Ntt=${encodeURIComponent(terminoBusqueda)}`
-          : `${this.baseUrl}/search?Ntt=${encodeURIComponent(terminoBusqueda)}&start=${(pagina - 1) * 40}`;
-
-        console.log(`[Sodimac] Página ${pagina}: ${url.substring(0, 70)}...`);
-        await this.page.goto(url, { waitUntil: 'domcontentloaded' });
-        await this.page.waitForTimeout(4000);
-
-        const productosPagina = await this.page.evaluate(() => {
-          const items = [];
-          // Las tarjetas tienen la clase "grid-pod"
-          const cards = document.querySelectorAll('[class*="grid-pod"]');
-          
-          cards.forEach(card => {
-            // El link de producto va a falabella.com/product/...
-            const aTag = Array.from(card.querySelectorAll('a'))
-              .find(a => a.href && a.href.includes('/product/'));
-            
-            if (!aTag) return;
-            
-          // Marca: span de marca que aparece sobre el título
-            const marcaEl = card.querySelector('[class*="brand"], [class*="Brand"], p[class*="brand"]');
-            const marca = marcaEl ? marcaEl.innerText.trim() : '';
-
-            // Nombre: concatenar marca + nombre si la marca está separada del título
-            const tituloTexto = aTag.innerText.trim();
-            // El innerText del link puede contener varias líneas, tomamos la que no sea la marca ni precio
-            const lineas = tituloTexto.split('\n').map(l => l.trim()).filter(l => l.length > 2);
-            // La línea que contiene $ es el precio, la ignoramos, junto con texto de vendedor/mayorista
-            const RUIDO = ['$', 'sodimac', 'mayorista', 'retira', 'llega', 'por ', 'precio sobre'];
-            const nombreLineas = lineas.filter(l => !RUIDO.some(r => l.toLowerCase().includes(r)) && !l.match(/^\(\d+\)$/));
-            // Limpiar texto residual "PRECIO sobre X un" que puede quedar embebido
-            const nombreSinRuido = nombreLineas.join(' ').replace(/PRECIO\s+sobre\s+\d+\s+un/gi, '').trim();
-            
-            let nombre = nombreSinRuido;
-            // Si el nombre es solo la marca (corto y en mayúsculas), combinamos con el texto del h3 si existe
-            const h3 = card.querySelector('h3, b, strong');
-            if (nombre.length < 4 || nombre === nombre.toUpperCase() && nombre.length < 15) {
-              const h3Text = h3 ? h3.innerText.trim() : '';
-              if (h3Text && !nombre.includes(h3Text)) {
-                nombre = (nombre + ' ' + h3Text).trim();
-              }
-            }
-            const link = aTag.href;
-            // Imagen
-            const imgEl = card.querySelector('img');
-            const imagen = imgEl ? (imgEl.getAttribute('src') || imgEl.src) : '';
-
-            // Precio: elemento con $ y longitud corta
-            const priceEls = Array.from(card.querySelectorAll('*'))
-              .filter(el => el.children.length === 0 && el.innerText && 
-                            el.innerText.includes('$') && el.innerText.length < 12);
-            
-            let precio = 0;
-            for (const p of priceEls) {
-              const text = p.innerText.replace(/[^0-9]/g, '');
-              if (text.length >= 3) {
-                precio = parseInt(text);
-                break;
-              }
-            }
-
-            if (nombre && precio > 0) {
-              items.push({ nombre, marca, link, precio, imagen });
-            }
-          });
-          
-          return items;
-        });
-
-        if (productosPagina.length === 0) break;
-
-        todosLosProductos.push(...productosPagina);
-        console.log(`[Sodimac] Página ${pagina}: ${productosPagina.length} productos. Total: ${todosLosProductos.length}`);
-
-        if (todosLosProductos.length >= maxProductos) break;
-        pagina++;
+      const html = await this.page.content();
+      const nextDataMatch = html.match(/<script id="__NEXT_DATA__" type="application\/json">([^<]+)<\/script>/);
+      
+      if (!nextDataMatch) {
+          console.log(`[Sodimac] No se encontró la data JSON en la página.`);
+          return [];
       }
 
-      const resultado = todosLosProductos.slice(0, maxProductos);
-      console.log(`[Sodimac] Extracción completa: ${resultado.length} productos.`);
-      return resultado;
+      const jsonData = JSON.parse(nextDataMatch[1]);
+      const rawProducts = this._findProductsInJson(jsonData);
+
+      const items = [];
+      for (const p of rawProducts) {
+        if (items.length >= maxProductos) break;
+        
+        let precio = 0;
+        if (p.prices && p.prices.length > 0) {
+            // Eliminar puntos de miles y convertir a entero
+            const pString = p.prices[0].price[0] || '0';
+            precio = parseInt(pString.replace(/\./g, ''));
+        }
+
+        let link = p.url || '';
+        if (link && !link.startsWith('http')) link = `${this.baseUrl}${link}`;
+
+        let imagen = '';
+        if (p.mediaUrls && p.mediaUrls.length > 0) {
+            imagen = p.mediaUrls[0];
+        }
+
+        if (p.displayName && precio > 0) {
+            items.push({
+                nombre: p.displayName,
+                marca: p.brand || '',
+                link: link,
+                precio: precio,
+                imagen: imagen
+            });
+        }
+      }
+
+      console.log(`[Sodimac] Extracción completa: ${items.length} productos usando API interna.`);
+      return items;
 
     } catch (error) {
       console.error(`[Sodimac] Error durante la búsqueda:`, error.message);
@@ -106,37 +79,35 @@ export class SodimacScraper extends BaseScraper {
     }
   }
 
-  // Método de URL Directa (PDP)
   async scrapeUrl(url) {
     try {
       await this.init();
       console.log(`[Sodimac] Visitando producto: ${url.substring(0, 50)}...`);
       
       await this.page.goto(url, { waitUntil: 'domcontentloaded' });
-      await this.page.waitForTimeout(4000);
+      await this.page.waitForTimeout(2000);
       
-      const producto = await this.page.evaluate(() => {
-        let nombre = 'Sin nombre';
-        const h1 = document.querySelector('h1');
-        if (h1) nombre = h1.innerText.trim();
+      const html = await this.page.content();
+      const nextDataMatch = html.match(/<script id="__NEXT_DATA__" type="application\/json">([^<]+)<\/script>/);
+      
+      if (!nextDataMatch) return [];
 
-        let precio = 0;
-        const priceEls = Array.from(document.querySelectorAll('*'))
-          .filter(el => el.children.length === 0 && el.innerText && 
-                        el.innerText.includes('$') && el.innerText.length < 12);
-        for (const el of priceEls) {
-          const text = el.innerText.replace(/[^0-9]/g, '');
-          if (text.length >= 3) {
-            precio = parseInt(text);
-            break;
+      const jsonData = JSON.parse(nextDataMatch[1]);
+      const rawProducts = this._findProductsInJson(jsonData);
+      
+      if (rawProducts.length > 0) {
+          const p = rawProducts[0];
+          let precio = 0;
+          if (p.prices && p.prices.length > 0) {
+              const pString = p.prices[0].price[0] || '0';
+              precio = parseInt(pString.replace(/\./g, ''));
           }
-        }
-
-        return { nombre, link: window.location.href, precio };
-      });
-
-      console.log(`[Sodimac] Extraído: ${producto.nombre} - $${producto.precio}`);
-      return producto.precio > 0 ? [producto] : [];
+          if (precio > 0) {
+              console.log(`[Sodimac] Extraído: ${p.displayName} - $${precio}`);
+              return [{ nombre: p.displayName, link: url, precio: precio }];
+          }
+      }
+      return [];
 
     } catch (error) {
       console.error(`[Sodimac] Error durante el scraping:`, error.message);

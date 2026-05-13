@@ -13,14 +13,13 @@ export class ImperialScraper extends BaseScraper {
       
       // Nrpp=36 para obtener 36 resultados por página en lugar de los 12 por defecto
       const url = `${this.baseUrl}/search?Ntt=${encodeURIComponent(terminoBusqueda)}&searchType=simple&Nrpp=36`;
-      await this.page.goto(url, { waitUntil: 'domcontentloaded' });
+      await this.page.goto(url, { waitUntil: 'networkidle' });
       
-      // A veces hay modales de ubicación
-      await this.page.waitForTimeout(3000);
-      try {
-          const btnCerrar = await this.page.$('button.close, .modal-close');
-          if (btnCerrar) await btnCerrar.click();
-      } catch(e) {}
+      // Esperar específicamente a que rendericen los h2 de productos
+      console.log(`[Imperial] Esperando renderizado dinámico de productos...`);
+      await this.page.waitForSelector('h2', { timeout: 12000 }).catch(() => {
+          console.log(`[Imperial] Los h2 no aparecieron después de 12s.`);
+      });
 
       console.log(`[Imperial] Extrayendo resultados de búsqueda...`);
       const productos = await this.page.evaluate(() => {
@@ -62,7 +61,8 @@ export class ImperialScraper extends BaseScraper {
 
           // Imagen
           const imgEl = container.querySelector('img');
-          const imagen = imgEl ? (imgEl.getAttribute('src') || imgEl.src) : '';
+          let src = imgEl ? (imgEl.getAttribute('src') || imgEl.src || '') : '';
+          const imagen = src.startsWith('http') ? src : (src ? `https://www.imperial.cl${src.startsWith('/') ? '' : '/'}${src}` : '');
 
           if (precio > 0) {
              items.push({ nombre, marca, link, precio, imagen });

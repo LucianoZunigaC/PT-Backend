@@ -15,7 +15,7 @@ export class BaseScraper {
   async init() {
     console.log(`[${this.proveedorNombre}] Inicializando scraper...`);
     this.browser = await chromium.launch({
-      headless: false, // En false para poder ver qué hace durante el desarrollo
+      headless: true, // Cambiado a true para ejecución en segundo plano
       args: ['--no-sandbox', '--disable-setuid-sandbox']
     });
     this.context = await this.browser.newContext({

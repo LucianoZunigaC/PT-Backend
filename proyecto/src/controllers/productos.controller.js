@@ -1,11 +1,12 @@
 import { prisma } from '../lib/prisma.js';
+import { ejecutarScrapingDinamico } from '../services/scraping.service.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/productos/busqueda?q=&cat=&precio_min=&precio_max=&sort=&page=&limit=
 // ─────────────────────────────────────────────────────────────────────────────
 export const buscarProductos = async (req, res, next) => {
   try {
-    const { q, cat, precio_min, precio_max, sort, page = 1, limit = 12 } = req.query;
+    const { q, cat, precio_min, precio_max, sort, page = 1, limit = 12, marcas, proveedores } = req.query;
 
     if (!q && !cat) {
       return res.status(400).json({ error: 'Se requiere un término de búsqueda (q) o categoría (cat)' });
@@ -26,23 +27,91 @@ export const buscarProductos = async (req, res, next) => {
       };
     }
 
-    const productos = await prisma.producto.findMany({
+    // Cargamos todos los precios disponibles para poder mostrar comparación múltiple de inmediato
+    let productos = await prisma.producto.findMany({
       where,
       include: {
         categoria: { select: { id: true, nombre: true } },
         precios: {
           include: { proveedor: { select: { id: true, nombre: true, sitio_web: true } } },
-          orderBy: { fecha_actualizacion: 'desc' },
-          take: 1,
+          orderBy: { precio: 'asc' }, // Ordenados por menor precio
         },
       },
     });
 
-    // Filtrar por rango de precios en memoria
+    // Si no hay productos, intentamos un scraping dinámico en vivo
+    if (productos.length === 0 && q) {
+      console.log(`[Busqueda] No se encontraron resultados para '${q}', iniciando scraping dinámico...`);
+      const guardados = await ejecutarScrapingDinamico(q);
+      
+      if (guardados > 0) {
+        // Volver a buscar después de guardar
+        productos = await prisma.producto.findMany({
+          where,
+          include: {
+            categoria: { select: { id: true, nombre: true } },
+            precios: {
+              include: { proveedor: { select: { id: true, nombre: true, sitio_web: true } } },
+              orderBy: { precio: 'asc' },
+            },
+          },
+        });
+      }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // 1. Generar Facetas (Estadísticas dinámicas del pool total de productos)
+    // ─────────────────────────────────────────────────────────────────────────
+    const facetas = {
+      marcas: {},
+      proveedores: {}
+    };
+
+    productos.forEach(p => {
+      // Marcas
+      if (p.marca) {
+        const brand = p.marca.trim();
+        facetas.marcas[brand] = (facetas.marcas[brand] || 0) + 1;
+      }
+      
+      // Proveedores únicos que ofrecen este producto
+      p.precios?.forEach(pr => {
+        const prov = pr.proveedor?.nombre;
+        if (prov) {
+          facetas.proveedores[prov] = (facetas.proveedores[prov] || 0) + 1;
+        }
+      });
+    });
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // 2. Aplicar Filtros Avanzados en Memoria
+    // ─────────────────────────────────────────────────────────────────────────
     let filtrados = productos;
+
+    // Filtro por Marca
+    if (marcas) {
+      const selectedBrands = marcas.split(',').map(m => m.trim().toLowerCase());
+      filtrados = filtrados.filter(p => {
+        const b = (p.marca || '').trim().toLowerCase();
+        return selectedBrands.includes(b);
+      });
+    }
+
+    // Filtro por Proveedores
+    if (proveedores) {
+      const selectedProvs = proveedores.split(',').map(p => p.trim().toLowerCase());
+      filtrados = filtrados.filter(p => {
+        return p.precios.some(pr => {
+          const prov = (pr.proveedor?.nombre || '').trim().toLowerCase();
+          return selectedProvs.includes(prov);
+        });
+      });
+    }
+
+    // Filtrar por rango de precios
     if (precio_min || precio_max) {
-      filtrados = productos.filter(p => {
-        const precio = Number(p.precios[0]?.precio ?? 0);
+      filtrados = filtrados.filter(p => {
+        const precio = Number(p.precios[0]?.precio ?? 0); // El menor precio (ya que están ordered asc)
         const minOk = precio_min ? precio >= Number(precio_min) : true;
         const maxOk = precio_max ? precio <= Number(precio_max) : true;
         return precio > 0 && minOk && maxOk;
@@ -54,6 +123,9 @@ export const buscarProductos = async (req, res, next) => {
       filtrados.sort((a, b) => Number(a.precios[0]?.precio ?? 999999999) - Number(b.precios[0]?.precio ?? 999999999));
     } else if (sort === 'price-desc') {
       filtrados.sort((a, b) => Number(b.precios[0]?.precio ?? 0) - Number(a.precios[0]?.precio ?? 0));
+    } else if (sort === 'providers') {
+      // Más proveedores primero
+      filtrados.sort((a, b) => (b.precios?.length || 0) - (a.precios?.length || 0));
     }
 
     // Paginación
@@ -64,7 +136,14 @@ export const buscarProductos = async (req, res, next) => {
     const inicio    = (pageNum - 1) * limitNum;
     const paginados = filtrados.slice(inicio, inicio + limitNum);
 
-    res.json({ total, page: pageNum, limit: limitNum, totalPages, productos: paginados });
+    res.json({ 
+      total, 
+      page: pageNum, 
+      limit: limitNum, 
+      totalPages, 
+      facetas,
+      productos: paginados 
+    });
   } catch (error) {
     next(error);
   }
