@@ -59,6 +59,9 @@ export class SodimacScraper extends BaseScraper {
               }
             }
             const link = aTag.href;
+            // Imagen
+            const imgEl = card.querySelector('img');
+            const imagen = imgEl ? (imgEl.getAttribute('src') || imgEl.src) : '';
 
             // Precio: elemento con $ y longitud corta
             const priceEls = Array.from(card.querySelectorAll('*'))
@@ -75,7 +78,7 @@ export class SodimacScraper extends BaseScraper {
             }
 
             if (nombre && precio > 0) {
-              items.push({ nombre, marca, link, precio });
+              items.push({ nombre, marca, link, precio, imagen });
             }
           });
           

@@ -1,5 +1,4 @@
-import { PrismaClient } from '@prisma/client';
-const prisma = new PrismaClient();
+import { prisma } from '../lib/prisma.js';
 
 export const obtenerObuscarProveedor = async (nombre) => {
   let proveedor = await prisma.proveedor.findFirst({
@@ -20,43 +19,72 @@ export const guardarResultadosScraping = async (proveedorId, categoriaId, produc
   for (const item of productosExtraidos) {
     if (!item.precio || item.precio === 0) continue;
 
-    // Buscar si el producto ya existe (por nombre y proveedor)
+    // Normalizar el nombre para mejor matching (minúsculas, sin puntuación)
+    const normalizedName = item.nombre.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim();
+
+    // 1. Buscar si el producto ya existe en la base de datos (incluso de otro proveedor)
+    // Buscamos productos que contengan la primera parte del nombre o coincidan exactamente
+    const palabras = normalizedName.split(' ');
+    const firstTwoWords = palabras.slice(0, 2).join(' ');
+
     let producto = await prisma.producto.findFirst({
-      where: { 
-        nombre: item.nombre,
-        proveedor_id: proveedorId
+      where: {
+        nombre: { contains: firstTwoWords, mode: 'insensitive' }
       }
     });
+
+    // Validar manualmente para evitar falsos positivos
+    if (producto) {
+       const prodNorm = producto.nombre.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim();
+       if (!prodNorm.includes(firstTwoWords) && !normalizedName.includes(prodNorm.split(' ')[0])) {
+           producto = null; // Falso positivo, forzamos creación
+       }
+    }
 
     if (!producto) {
       producto = await prisma.producto.create({
         data: {
           nombre: item.nombre,
           marca: item.marca || null,
-          link: item.link || null,
-          proveedor_id: proveedorId,
+          imagen: item.imagen || null,
           categoria_id: categoriaId,
         }
       });
     } else {
-      // Actualizar link y marca si se encontró el producto
-      await prisma.producto.update({
-        where: { id: producto.id },
-        data: {
-          marca: item.marca || producto.marca,
-          link: item.link || producto.link,
-        }
-      });
+      // Actualizar imagen si el existente no tenía
+      if (!producto.imagen && item.imagen) {
+        await prisma.producto.update({
+          where: { id: producto.id },
+          data: { imagen: item.imagen }
+        });
+      }
     }
 
-    // Registrar precio
-    await prisma.precio.create({
-      data: {
-        producto_id: producto.id,
-        proveedor_id: proveedorId,
-        precio: item.precio
-      }
+    // Registrar precio y link
+    // Verificamos si ya existe un precio de este proveedor para no duplicar entradas innecesariamente
+    const precioExistente = await prisma.precio.findFirst({
+        where: { producto_id: producto.id, proveedor_id: proveedorId }
     });
+
+    if (precioExistente) {
+        await prisma.precio.update({
+            where: { id: precioExistente.id },
+            data: { 
+                precio: item.precio,
+                link: item.link || precioExistente.link,
+                fecha_actualizacion: new Date()
+            }
+        });
+    } else {
+        await prisma.precio.create({
+          data: {
+            producto_id: producto.id,
+            proveedor_id: proveedorId,
+            precio: item.precio,
+            link: item.link || null
+          }
+        });
+    }
 
     guardados++;
   }

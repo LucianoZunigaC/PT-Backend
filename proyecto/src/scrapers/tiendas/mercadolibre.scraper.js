@@ -40,6 +40,10 @@ export class MercadoLibreScraper extends BaseScraper {
             // En ML la marca/vendedor suele estar en .poly-component__brand
             const marcaEl = el.querySelector('.poly-component__brand, [class*="brand"]');
             const marca = marcaEl ? marcaEl.innerText.trim() : '';
+
+            // Imagen
+            const imgEl = el.querySelector('img.poly-component__picture') || el.querySelector('img');
+            const imagen = imgEl ? (imgEl.getAttribute('data-src') || imgEl.src) : '';
             
             let precio = 0;
             if (priceEl && priceEl.innerText) {
@@ -48,7 +52,7 @@ export class MercadoLibreScraper extends BaseScraper {
             }
 
             if (nombre && precio > 0 && link) {
-               items.push({ nombre, marca, link, precio });
+               items.push({ nombre, marca, link, precio, imagen });
             }
           });
           

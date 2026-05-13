@@ -60,8 +60,12 @@ export class ImperialScraper extends BaseScraper {
               }
           }
 
+          // Imagen
+          const imgEl = container.querySelector('img');
+          const imagen = imgEl ? (imgEl.getAttribute('src') || imgEl.src) : '';
+
           if (precio > 0) {
-             items.push({ nombre, marca, link, precio });
+             items.push({ nombre, marca, link, precio, imagen });
           }
         });
         
