@@ -1,4 +1,5 @@
 import { prisma } from '../lib/prisma.js';
+import { normalizarProducto, esMatchSeguro, esProductoValido } from './normalization.service.js';
 
 export const obtenerObuscarProveedor = async (nombre) => {
   let proveedor = await prisma.proveedor.findFirst({
@@ -18,27 +19,30 @@ export const guardarResultadosScraping = async (proveedorId, categoriaId, produc
 
   for (const item of productosExtraidos) {
     if (!item.precio || item.precio === 0) continue;
+    
+    if (!esProductoValido(item.nombre)) continue;
 
-    // Normalizar el nombre para mejor matching (minúsculas, sin puntuación)
-    const normalizedName = item.nombre.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim();
+    const { normalizado, tokens } = normalizarProducto(item.nombre);
 
-    // 1. Buscar si el producto ya existe en la base de datos (incluso de otro proveedor)
-    // Buscamos productos que contengan la primera parte del nombre o coincidan exactamente
-    const palabras = normalizedName.split(' ');
-    const firstTwoWords = palabras.slice(0, 2).join(' ');
+    let producto = null;
+    if (tokens.length > 0) {
+      // Tomamos los 2 primeros tokens fuertes como heurística para acotar la búsqueda en DB
+      const searchStr = tokens.slice(0, 2).join(' ');
+      
+      const candidatos = await prisma.producto.findMany({
+        where: {
+          nombre: { contains: tokens[0], mode: 'insensitive' }
+        }
+      });
 
-    let producto = await prisma.producto.findFirst({
-      where: {
-        nombre: { contains: firstTwoWords, mode: 'insensitive' }
+      // Evaluar con Jaccard (esMatchSeguro)
+      for (const cand of candidatos) {
+         const candNorm = normalizarProducto(cand.nombre);
+         if (esMatchSeguro(tokens, candNorm.tokens, 0.65)) {
+             producto = cand;
+             break;
+         }
       }
-    });
-
-    // Validar manualmente para evitar falsos positivos
-    if (producto) {
-       const prodNorm = producto.nombre.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim();
-       if (!prodNorm.includes(firstTwoWords) && !normalizedName.includes(prodNorm.split(' ')[0])) {
-           producto = null; // Falso positivo, forzamos creación
-       }
     }
 
     if (!producto) {
@@ -94,6 +98,12 @@ export const guardarResultadosScraping = async (proveedorId, categoriaId, produc
 
 // Nueva función para hacer scraping en vivo si no se encuentran productos
 export const ejecutarScrapingDinamico = async (termino) => {
+  // 1. Bloqueo Prematuro (Ahorro de recursos)
+  if (!esProductoValido(termino)) {
+      console.log(`[Scraping Dinámico] Abortado: El término "${termino}" está en la lista de exclusión estricta.`);
+      return 0;
+  }
+
   // Importaciones dinámicas para evitar problemas si los archivos son movidos
   const { MercadoLibreScraper } = await import('../scrapers/tiendas/mercadolibre.scraper.js');
   const { SodimacScraper } = await import('../scrapers/tiendas/sodimac.scraper.js');

@@ -38,10 +38,32 @@ export class SodimacScraper extends BaseScraper {
       const jsonData = JSON.parse(nextDataMatch[1]);
       const rawProducts = this._findProductsInJson(jsonData);
 
+      // Whitelist de categorías permitidas
+      const categoriasValidas = ['ferretería', 'construcción', 'herramientas', 'seguridad', 'baño', 'cocina', 'pintura', 'pisos', 'madera', 'electricidad', 'gasfitería', 'jardín', 'materiales'];
+
       const items = [];
       for (const p of rawProducts) {
         if (items.length >= maxProductos) break;
+
+        // Validar categoría dinámicamente
+        let esCategoriaValida = false;
+        if (p.categories && Array.isArray(p.categories)) {
+           for (const cat of p.categories) {
+               if (!cat.name) continue;
+               const catName = cat.name.toLowerCase();
+               if (categoriasValidas.some(v => catName.includes(v))) {
+                   esCategoriaValida = true;
+                   break;
+               }
+           }
+        }
         
+        // Si no se encontró el arreglo de categorías, o si no hace match con el rubro, ignorar
+        if (!esCategoriaValida && p.categories && p.categories.length > 0) {
+            console.log(`[Sodimac] Producto ignorado por categoría: ${p.displayName}`);
+            continue;
+        }
+
         let precio = 0;
         if (p.prices && p.prices.length > 0) {
             // Eliminar puntos de miles y convertir a entero
@@ -68,7 +90,7 @@ export class SodimacScraper extends BaseScraper {
         }
       }
 
-      console.log(`[Sodimac] Extracción completa: ${items.length} productos usando API interna.`);
+      console.log(`[Sodimac] Extracción completa: ${items.length} productos válidos.`);
       return items;
 
     } catch (error) {

@@ -13,7 +13,7 @@ export class ImperialScraper extends BaseScraper {
       
       // Nrpp=36 para obtener 36 resultados por página en lugar de los 12 por defecto
       const url = `${this.baseUrl}/search?Ntt=${encodeURIComponent(terminoBusqueda)}&searchType=simple&Nrpp=36`;
-      await this.page.goto(url, { waitUntil: 'networkidle' });
+      await this.page.goto(url, { waitUntil: 'domcontentloaded' });
       
       // Esperar específicamente a que rendericen los h2 de productos
       console.log(`[Imperial] Esperando renderizado dinámico de productos...`);

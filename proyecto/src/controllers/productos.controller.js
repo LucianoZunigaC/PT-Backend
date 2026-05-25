@@ -161,7 +161,10 @@ export const compararProductos = async (req, res, next) => {
       where: { nombre: { contains: q, mode: 'insensitive' } },
       include: {
         categoria: { select: { id: true, nombre: true } },
-        precios: { orderBy: { fecha_actualizacion: 'desc' }, take: 1 },
+        precios: {
+          include: { proveedor: { select: { id: true, nombre: true, sitio_web: true } } },
+          orderBy: { precio: 'asc' },
+        },
       },
     });
 

@@ -18,9 +18,11 @@ export class MercadoLibreScraper extends BaseScraper {
 
       while (todosLosProductos.length < maxProductos) {
         const offset = (pagina - 1) * porPagina;
+        // Delimitar al dominio de herramientas-construccion nativo de MercadoLibre
+        const baseConstruccion = `${this.baseUrl}/herramientas-construccion`;
         const url = pagina === 1
-          ? `${this.baseUrl}/${encodeURIComponent(terminoBusqueda)}`
-          : `${this.baseUrl}/${encodeURIComponent(terminoBusqueda)}_Desde_${offset + 1}`;
+          ? `${baseConstruccion}/${encodeURIComponent(terminoBusqueda)}`
+          : `${baseConstruccion}/${encodeURIComponent(terminoBusqueda)}_Desde_${offset + 1}`;
 
         console.log(`[MercadoLibre] Página ${pagina}: ${url.substring(0, 60)}...`);
         await this.page.goto(url, { waitUntil: 'domcontentloaded' });
