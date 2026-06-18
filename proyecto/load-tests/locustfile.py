@@ -77,6 +77,6 @@ class ConstructorVirtual(HttpUser):
         """Simula que un usuario hizo clic en ir a la tienda."""
         payload = {
             "productoId": random.choice(PRODUCT_IDS),
-            "tienda": random.choice(["Sodimac", "MercadoLibre", "Imperial"])
+            "tienda": random.choice(["Sodimac", "Construmart", "Imperial"])
         }
         self.client.post("/api/redirecciones", json=payload, name="POST /api/redirecciones")

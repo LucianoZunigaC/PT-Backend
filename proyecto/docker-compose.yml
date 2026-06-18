@@ -13,5 +13,16 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
+  locust:
+    image: locustio/locust:latest
+    container_name: plataforma_locust
+    ports:
+      - "8089:8089"
+    volumes:
+      - ./load-tests:/mnt/locust
+    command: -f /mnt/locust/locustfile.py --host http://host.docker.internal:3000
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
 volumes:
   postgres_data:

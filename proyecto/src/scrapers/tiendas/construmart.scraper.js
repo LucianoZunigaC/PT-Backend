@@ -1,16 +1,14 @@
-import { chromium } from 'playwright';
+import { BaseScraper } from '../base.scraper.js';
 
-export class ConstrumartScraper {
+export class ConstrumartScraper extends BaseScraper {
   constructor() {
-    this.baseUrl = 'https://www.construmart.cl';
+    super('Construmart', 'https://www.construmart.cl');
   }
 
   async scrape(terminoBusqueda, maxProductos = 20) {
-    let browser;
     try {
-      console.log(`[Construmart] Inicializando scraper limpio (sin plugins)...`);
-      browser = await chromium.launch({ headless: true });
-      const page = await browser.newPage();
+      await this.init();
+      console.log(`[Construmart] Buscando: "${terminoBusqueda}" (max ${maxProductos} productos)`);
 
       const todosLosProductos = [];
       let pagina = 1;
@@ -20,15 +18,15 @@ export class ConstrumartScraper {
           const url = `${this.baseUrl}/search?Ntt=${encodeURIComponent(terminoBusqueda)}&p=${pagina}`;
           console.log(`[Construmart] Navegando a la página ${pagina}: ${url}`);
 
-          await page.goto(url, { waitUntil: 'domcontentloaded' });
+          await this.page.goto(url, { waitUntil: 'domcontentloaded' });
 
           console.log(`[Construmart] Esperando renderizado dinámico de Magento (5s)...`);
-          await page.waitForTimeout(5000);
+          await this.page.waitForTimeout(5000);
 
-          const actualUrl = page.url();
+          const actualUrl = this.page.url();
           console.log(`[Construmart] URL real alcanzada: ${actualUrl}`);
 
-          const productosPagina = await page.evaluate(() => {
+          const productosPagina = await this.page.evaluate(() => {
             const items = [];
             const cards = document.querySelectorAll('.product-item');
 
@@ -89,26 +87,18 @@ export class ConstrumartScraper {
       console.error(`[Construmart] Error durante la búsqueda:`, error.message);
       return [];
     } finally {
-      if (browser) {
-        try {
-          await browser.close();
-        } catch (closeError) {
-          console.error(`[Construmart] Error al cerrar el navegador:`, closeError.message);
-        }
-      }
+      await this.close();
     }
   }
 
   async scrapeUrl(url) {
-    let browser;
     try {
+      await this.init();
       console.log(`[Construmart] Visitando producto: ${url.substring(0, 50)}...`);
-      browser = await chromium.launch({ headless: true });
-      const page = await browser.newPage();
-      await page.goto(url, { waitUntil: 'domcontentloaded' });
-      await page.waitForTimeout(4000);
+      await this.page.goto(url, { waitUntil: 'domcontentloaded' });
+      await this.page.waitForTimeout(4000);
 
-      const producto = await page.evaluate(() => {
+      const producto = await this.page.evaluate(() => {
         let nombre = 'Sin nombre';
         const titleEl = document.querySelector('.page-title') || document.querySelector('h1');
         if (titleEl) nombre = titleEl.innerText.trim();
@@ -139,13 +129,7 @@ export class ConstrumartScraper {
       console.error(`[Construmart] Error durante el scraping de URL:`, error.message);
       return [];
     } finally {
-      if (browser) {
-        try {
-          await browser.close();
-        } catch (closeError) {
-          console.error(`[Construmart] Error al cerrar el navegador:`, closeError.message);
-        }
-      }
+      await this.close();
     }
   }
 }

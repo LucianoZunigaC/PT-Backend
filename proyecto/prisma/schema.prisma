@@ -32,11 +32,13 @@ model Producto {
   marca        String?     // Marca del producto (ej: Polpaico, Melón, Robust)
   descripcion  String?
   imagen       String?     // URL de la imagen principal del producto
+  fingerprint  String?     // Hash determinista para agrupar el mismo producto entre tiendas
   categoria_id BigInt?
   categoria    Categoria?  @relation(fields: [categoria_id], references: [id])
   precios      Precio[]
   redirecciones Redireccion[]
 
+  @@index([fingerprint])
   @@map("productos")
 }
 

@@ -1,5 +1,5 @@
 import { prisma } from '../lib/prisma.js';
-import { normalizarProducto, esMatchSeguro, esProductoValido } from './normalization.service.js';
+import { normalizarProducto, esMatchSeguro, esProductoValido, generarFingerprint } from './normalization.service.js';
 
 export const obtenerObuscarProveedor = async (nombre) => {
   let proveedor = await prisma.proveedor.findFirst({
@@ -23,24 +23,39 @@ export const guardarResultadosScraping = async (proveedorId, categoriaId, produc
     if (!esProductoValido(item.nombre)) continue;
 
     const { normalizado, tokens } = normalizarProducto(item.nombre);
+    const fingerprint = generarFingerprint(item.nombre, item.marca);
 
     let producto = null;
-    if (tokens.length > 0) {
-      // Tomamos los 2 primeros tokens fuertes como heurística para acotar la búsqueda en DB
-      const searchStr = tokens.slice(0, 2).join(' ');
-      
+
+    // ── Estrategia 1: Búsqueda por fingerprint (rápida y precisa) ──────
+    if (fingerprint) {
+      producto = await prisma.producto.findFirst({
+        where: { fingerprint }
+      });
+    }
+
+    // ── Estrategia 2: Búsqueda fuzzy por tokens (fallback) ─────────────
+    if (!producto && tokens.length > 0) {
+      // Buscar candidatos usando los primeros 2 tokens para acotar la búsqueda
+      const condicionesBusqueda = tokens.slice(0, 2).map(t => ({
+        nombre: { contains: t, mode: 'insensitive' }
+      }));
+
       const candidatos = await prisma.producto.findMany({
         where: {
-          nombre: { contains: tokens[0], mode: 'insensitive' }
-        }
+          AND: condicionesBusqueda
+        },
+        take: 50 // Limitar para no sobrecargar
       });
 
-      // Evaluar con Jaccard (esMatchSeguro) y verificación de marca
+      // Evaluar con esMatchSeguro (ponderado) y verificación de marca
       for (const cand of candidatos) {
+         // Verificación de marca por contención (no igualdad exacta)
          if (item.marca && cand.marca) {
              const brandItem = item.marca.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
              const brandCand = cand.marca.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
-             if (brandItem !== brandCand) {
+             // Usar contención en lugar de igualdad exacta (ej: "Bosch" ⊂ "Bosch Professional")
+             if (!brandItem.includes(brandCand) && !brandCand.includes(brandItem)) {
                  continue;
              }
          }
@@ -59,15 +74,21 @@ export const guardarResultadosScraping = async (proveedorId, categoriaId, produc
           nombre: item.nombre,
           marca: item.marca || null,
           imagen: item.imagen || null,
+          fingerprint: fingerprint || null,
           categoria_id: categoriaId,
         }
       });
     } else {
-      // Actualizar imagen si el existente no tenía
-      if (!producto.imagen && item.imagen) {
+      // Actualizar datos faltantes del producto existente
+      const updates = {};
+      if (!producto.imagen && item.imagen) updates.imagen = item.imagen;
+      if (!producto.fingerprint && fingerprint) updates.fingerprint = fingerprint;
+      if (!producto.marca && item.marca) updates.marca = item.marca;
+      
+      if (Object.keys(updates).length > 0) {
         await prisma.producto.update({
           where: { id: producto.id },
-          data: { imagen: item.imagen }
+          data: updates
         });
       }
     }
@@ -113,7 +134,7 @@ export const ejecutarScrapingDinamico = async (termino) => {
   }
 
   // Importaciones dinámicas para evitar problemas si los archivos son movidos
-  const { MercadoLibreScraper } = await import('../scrapers/tiendas/mercadolibre.scraper.js');
+  const { ConstrumartScraper } = await import('../scrapers/tiendas/construmart.scraper.js');
   const { SodimacScraper } = await import('../scrapers/tiendas/sodimac.scraper.js');
   const { ImperialScraper } = await import('../scrapers/tiendas/imperial.scraper.js');
 
@@ -122,7 +143,7 @@ export const ejecutarScrapingDinamico = async (termino) => {
     categoria = await prisma.categoria.create({ data: { nombre: 'Materiales Varios' }});
   }
 
-  const mlDb = await obtenerObuscarProveedor('MercadoLibre');
+  const construmartDb = await obtenerObuscarProveedor('Construmart');
   const sodimacDb = await obtenerObuscarProveedor('Sodimac');
   const imperialDb = await obtenerObuscarProveedor('Imperial');
 
@@ -130,19 +151,19 @@ export const ejecutarScrapingDinamico = async (termino) => {
 
   try {
     // Scraping en paralelo para ser más rápidos
-    const mercadolibre = new MercadoLibreScraper();
+    const construmart = new ConstrumartScraper();
     const sodimac = new SodimacScraper();
     const imperial = new ImperialScraper();
 
     console.log(`[Scraping Dinámico] Iniciando scrapers concurrentes para: ${termino}`);
-    const [resultadosML, resultadosSodimac, resultadosImperial] = await Promise.all([
-      mercadolibre.scrape(termino, 12).catch(() => []),
+    const [resultadosConstrumart, resultadosSodimac, resultadosImperial] = await Promise.all([
+      construmart.scrape(termino, 12).catch(() => []),
       sodimac.scrape(termino, 12).catch(() => []),
       imperial.scrape(termino, 12).catch(() => [])
     ]);
 
-    if (resultadosML.length > 0) {
-      totalGuardados += await guardarResultadosScraping(mlDb.id, categoria.id, resultadosML);
+    if (resultadosConstrumart.length > 0) {
+      totalGuardados += await guardarResultadosScraping(construmartDb.id, categoria.id, resultadosConstrumart);
     }
     if (resultadosSodimac.length > 0) {
       totalGuardados += await guardarResultadosScraping(sodimacDb.id, categoria.id, resultadosSodimac);

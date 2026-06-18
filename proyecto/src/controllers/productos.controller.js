@@ -39,24 +39,14 @@ export const buscarProductos = async (req, res, next) => {
       },
     });
 
-    // Si no hay productos, intentamos un scraping dinámico en vivo
+    // Si no hay productos, iniciamos un scraping dinámico en background para futuras búsquedas
     if (productos.length === 0 && q) {
-      console.log(`[Busqueda] No se encontraron resultados para '${q}', iniciando scraping dinámico...`);
-      const guardados = await ejecutarScrapingDinamico(q);
-      
-      if (guardados > 0) {
-        // Volver a buscar después de guardar
-        productos = await prisma.producto.findMany({
-          where,
-          include: {
-            categoria: { select: { id: true, nombre: true } },
-            precios: {
-              include: { proveedor: { select: { id: true, nombre: true, sitio_web: true } } },
-              orderBy: { precio: 'asc' },
-            },
-          },
-        });
-      }
+      console.log(`[Busqueda] No se encontraron resultados para '${q}', iniciando scraping dinámico en background...`);
+      ejecutarScrapingDinamico(q).then(guardados => {
+          console.log(`[Scraping Background] Finalizado para '${q}', guardados: ${guardados}`);
+      }).catch(err => {
+          console.error(`[Scraping Background] Error:`, err);
+      });
     }
 
     // ─────────────────────────────────────────────────────────────────────────
