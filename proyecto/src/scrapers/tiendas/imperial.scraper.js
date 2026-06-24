@@ -169,7 +169,31 @@ export class ImperialScraper extends BaseScraper {
           }
         }
 
-        return { nombre, marca, link: window.location.href, precio, imagen };
+        // Capturar descripción real
+        let descripcion = '';
+        const descEl = document.querySelector('[class*="description"] p, [class*="Description"] p, .product-long-description');
+        if (descEl) descripcion = descEl.innerText.trim().substring(0, 1000);
+
+        // Capturar especificaciones técnicas
+        const especificaciones = {};
+        // Imperial usa una estructura tipo lista de detalles o tabla
+        document.querySelectorAll('table tr, dl dt').forEach((el, i, arr) => {
+          if (el.tagName === 'TR') {
+            const cells = el.querySelectorAll('td, th');
+            if (cells.length >= 2) {
+              const key = cells[0].innerText.trim();
+              const val = cells[1].innerText.trim();
+              if (key && val) especificaciones[key] = val;
+            }
+          } else if (el.tagName === 'DT') {
+            const dd = el.nextElementSibling;
+            if (dd && dd.tagName === 'DD') {
+              especificaciones[el.innerText.trim()] = dd.innerText.trim();
+            }
+          }
+        });
+
+        return { nombre, marca, link: window.location.href, precio, imagen, descripcion, especificaciones };
       });
 
       console.log(`[Imperial] Extraído: ${producto.nombre} - $${producto.precio}`);

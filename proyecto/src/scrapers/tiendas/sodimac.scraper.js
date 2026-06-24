@@ -153,12 +153,29 @@ export class SodimacScraper extends BaseScraper {
         if (precio > 0) {
           console.log(`[Sodimac] Extraído: ${p.displayName} - $${precio}`);
           const imagen = p.mediaUrls && p.mediaUrls.length > 0 ? p.mediaUrls[0] : '';
+
+          // Extraer descripción del JSON de Falabella/Sodimac
+          const descripcion = (p.longDescription || p.shortDescription || '').substring(0, 1000);
+
+          // Extraer especificaciones del JSON (attributes/features)
+          const especificaciones = {};
+          const attrs = p.attributes || p.features || [];
+          if (Array.isArray(attrs)) {
+            attrs.forEach(attr => {
+              if (attr.name && attr.value) {
+                especificaciones[attr.name] = Array.isArray(attr.value) ? attr.value.join(', ') : String(attr.value);
+              }
+            });
+          }
+
           return [{
             nombre: p.displayName,
             marca: p.brand || '',
             link: url,
             precio: precio,
-            imagen: imagen
+            imagen: imagen,
+            descripcion,
+            especificaciones
           }];
         }
       }

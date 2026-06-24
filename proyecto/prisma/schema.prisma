@@ -27,32 +27,45 @@ model Categoria {
 }
 
 model Producto {
-  id           BigInt      @id @default(autoincrement())
-  nombre       String
-  marca        String?     // Marca del producto (ej: Polpaico, Melón, Robust)
-  descripcion  String?
-  imagen       String?     // URL de la imagen principal del producto
-  fingerprint  String?     // Hash determinista para agrupar el mismo producto entre tiendas
-  categoria_id BigInt?
-  categoria    Categoria?  @relation(fields: [categoria_id], references: [id])
-  precios      Precio[]
-  redirecciones Redireccion[]
+  id              BigInt        @id @default(autoincrement())
+  nombre          String
+  marca           String?       // Marca del producto (ej: Polpaico, Melón, Robust)
+  descripcion     String?
+  imagen          String?       // URL de la imagen principal del producto
+  fingerprint     String?       // Hash determinista para agrupar el mismo producto entre tiendas
+  especificaciones Json?         // Detalles técnicos adicionales en formato JSON
+  categoria_id    BigInt?
+  categoria       Categoria?    @relation(fields: [categoria_id], references: [id])
+  precios         Precio[]
+  historial       HistorialPrecio[]
+  redirecciones   Redireccion[]
 
   @@index([fingerprint])
   @@map("productos")
 }
 
 model Precio {
-  id                 BigInt    @id @default(autoincrement())
-  producto_id        BigInt?
-  proveedor_id       BigInt?
-  precio             Decimal
-  link               String?   // URL directa al producto en el proveedor
+  id                  BigInt    @id @default(autoincrement())
+  producto_id         BigInt?
+  proveedor_id        BigInt?
+  precio              Decimal
+  link                String?   // URL directa al producto en el proveedor
   fecha_actualizacion DateTime  @default(now()) @db.Timestamptz()
-  producto           Producto? @relation(fields: [producto_id], references: [id])
-  proveedor          Proveedor?@relation(fields: [proveedor_id], references: [id])
+  producto            Producto? @relation(fields: [producto_id], references: [id])
+  proveedor           Proveedor?@relation(fields: [proveedor_id], references: [id])
 
+  @@unique([producto_id, proveedor_id])
   @@map("precios")
+}
+
+model HistorialPrecio {
+  id           BigInt   @id @default(autoincrement())
+  producto_id  BigInt
+  precio       Decimal
+  fecha        DateTime @default(now()) @db.Timestamptz()
+  producto     Producto @relation(fields: [producto_id], references: [id])
+
+  @@map("historial_precios")
 }
 
 model Usuario {

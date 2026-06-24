@@ -326,31 +326,31 @@ export const historialPrecios = async (req, res, next) => {
     const fechaDesde = new Date();
     fechaDesde.setDate(fechaDesde.getDate() - parseInt(dias));
 
-    const precios = await prisma.precio.findMany({
+    // Leer desde la tabla de historial de snapshots
+    const snapshots = await prisma.historialPrecio.findMany({
       where: {
         producto_id: id,
-        fecha_actualizacion: { gte: fechaDesde },
+        fecha: { gte: fechaDesde },
       },
-      include: { proveedor: { select: { id: true, nombre: true } } },
-      orderBy: { fecha_actualizacion: 'asc' },
+      orderBy: { fecha: 'asc' },
     });
 
-    // Agrupar por día
+    // Agrupar snapshots por día
     const porDia = new Map();
-    for (const p of precios) {
-      const dia = p.fecha_actualizacion.toISOString().split('T')[0];
+    for (const snap of snapshots) {
+      const dia = snap.fecha.toISOString().split('T')[0];
       if (!porDia.has(dia)) porDia.set(dia, { fecha: dia, precios: [] });
-      porDia.get(dia).precios.push(Number(p.precio));
+      porDia.get(dia).precios.push(Number(snap.precio));
     }
 
     const historial = Array.from(porDia.values()).map(d => ({
       fecha: d.fecha,
-      precio_minimo:  Math.min(...d.precios),
-      precio_maximo:  Math.max(...d.precios),
+      precio_minimo:   Math.min(...d.precios),
+      precio_maximo:   Math.max(...d.precios),
       precio_promedio: Math.round(d.precios.reduce((a, b) => a + b, 0) / d.precios.length),
     }));
 
-    const todosLosPrecios = precios.map(p => Number(p.precio));
+    const todosLosPrecios = snapshots.map(s => Number(s.precio));
     const stats = todosLosPrecios.length > 0 ? {
       minimo:   Math.min(...todosLosPrecios),
       maximo:   Math.max(...todosLosPrecios),

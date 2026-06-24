@@ -120,7 +120,27 @@ export class ConstrumartScraper extends BaseScraper {
           }
         }
 
-        return { nombre, marca, link: window.location.href, precio, imagen };
+        // Capturar descripción real del producto
+        let descripcion = '';
+        const descEl = document.querySelector('.product.attribute.description .value')
+          || document.querySelector('[itemprop="description"]')
+          || document.querySelector('.product-description');
+        if (descEl) descripcion = descEl.innerText.trim().substring(0, 1000);
+
+        // Capturar especificaciones técnicas (tabla de atributos Magento)
+        const especificaciones = {};
+        const filas = document.querySelectorAll('.product.attribute table tr, .data.table.additional-attributes tr');
+        filas.forEach(tr => {
+          const th = tr.querySelector('th');
+          const td = tr.querySelector('td');
+          if (th && td) {
+            const key = th.innerText.trim();
+            const val = td.innerText.trim();
+            if (key && val) especificaciones[key] = val;
+          }
+        });
+
+        return { nombre, marca, link: window.location.href, precio, imagen, descripcion, especificaciones };
       });
 
       console.log(`[Construmart] Extraído: ${producto.nombre} - $${producto.precio}`);

@@ -2,6 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import apiRoutes from './routes/api.routes.js';
+import { iniciarIndexadorProactivo } from './jobs/indexer.job.js';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -42,4 +43,8 @@ app.use((err, req, res, next) => {
 app.listen(PORT, () => {
   console.log(`✅ Servidor corriendo en http://localhost:${PORT}`);
   console.log(`📋 Endpoints disponibles en http://localhost:${PORT}/api`);
+
+  // Iniciar indexador proactivo: primer ciclo a los 2 minutos, luego cada 6 horas
+  iniciarIndexadorProactivo({ delayInicialMs: 2 * 60_000, intervalHoras: 6 });
+  console.log(`🔍 Indexador proactivo programado (inicio en 2 min, ciclos cada 6h)`);
 });
