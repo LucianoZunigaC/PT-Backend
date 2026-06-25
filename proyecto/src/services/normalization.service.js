@@ -2,6 +2,7 @@
  * normalization.service.js
  * Servicio para limpiar y estandarizar nombres de productos extraídos por scraping.
  */
+import * as fuzzball from 'fuzzball';
 
 const STOP_WORDS = new Set([
     'de', 'para', 'el', 'la', 'los', 'las', 'un', 'una', 'unos', 'unas',
@@ -84,7 +85,11 @@ const UNIDADES_MAP = {
     'amperes': 'a',
     'ampere': 'a',
     'amperios': 'a',
-    'amperio': 'a'
+    'amperio': 'a',
+    // Onzas
+    'oz': 'oz',
+    'onza': 'oz',
+    'onzas': 'oz'
 };
 
 /**
@@ -109,6 +114,10 @@ export const normalizarProducto = (nombre) => {
 
     // 5. Estandarizar formatos compactos de dimensiones (ej: 2x4 -> 2 x 4, 1.2x2.4 -> 1.2 x 2.4)
     texto = texto.replace(/(\d+(?:\.\d+)?)x(\d+(?:\.\d+)?)/g, '$1 x $2');
+
+    // 5.5 Separar letras y números pegados (ej: gsr185 -> gsr 185, 18v -> 18 v)
+    texto = texto.replace(/([a-z]+)(\d+)/g, '$1 $2');
+    texto = texto.replace(/(\d+)([a-z]+)/g, '$1 $2');
 
     // 6. Trataremos los guiones como espacios
     texto = texto.replace(/[-_]/g, ' ');
@@ -229,20 +238,22 @@ const PRODUCT_TYPE_TOKENS = new Set([
 
 // Unidades reconocidas (para verificar contexto numérico)
 const KNOWN_UNITS = new Set([
-    'kg', 'g', 'l', 'ml', 'cm', 'm', 'mm', 'pulg', 'un', 'pz', 'gal', 'w', 'v', 'a'
+    'kg', 'g', 'l', 'ml', 'cm', 'm', 'mm', 'pulg', 'un', 'pz', 'gal', 'w', 'v', 'a', 'oz'
 ]);
 
 /**
- * Extrae pares [número, unidad] del arreglo de tokens.
+ * Extrae pares [número, unidad] del arreglo de tokens. Solo incluye números que tengan una unidad conocida.
  * Ej: ['cemento', '25', 'kg'] → [{ num: '25', unit: 'kg' }]
+ * Ej: ['taladro', '185'] → [] (185 no tiene unidad conocida)
  */
 const extraerParesNumeroUnidad = (tokens) => {
     const pares = [];
     for (let i = 0; i < tokens.length; i++) {
         if (/^\d+(?:\.\d+)?$/.test(tokens[i]) || /^\d+\/\d+$/.test(tokens[i])) {
             const nextToken = tokens[i + 1];
-            const unit = nextToken && KNOWN_UNITS.has(nextToken) ? nextToken : null;
-            pares.push({ num: tokens[i], unit });
+            if (nextToken && KNOWN_UNITS.has(nextToken)) {
+                pares.push({ num: tokens[i], unit: nextToken });
+            }
         }
     }
     return pares;
@@ -270,12 +281,12 @@ const tienenMismasMedidas = (tokensA, tokensB) => {
 
 /**
  * Algoritmo mejorado de coincidencia de productos.
- * Utiliza un sistema de puntuación ponderada:
- * - Los tokens de TIPO DE PRODUCTO (cemento, taladro) tienen peso doble
+ * Utiliza un sistema de puntuación ponderada y fuzzball para similitud de strings:
  * - Las medidas deben coincidir exactamente (número + unidad)
- * - La marca se verifica por contención (no igualdad exacta)
+ * - Los tokens de TIPO DE PRODUCTO deben tener intersección
+ * - No deben existir adjetivos contradictorios (ej. blanco vs gris)
  */
-export const esMatchSeguro = (tokensA, tokensB, umbral = 0.55) => {
+export const esMatchSeguro = (tokensA, tokensB, umbral = 80) => {
     // 1. Validar medidas completas (número + unidad, no solo número)
     if (!tienenMismasMedidas(tokensA, tokensB)) {
         return false;
@@ -292,26 +303,36 @@ export const esMatchSeguro = (tokensA, tokensB, umbral = 0.55) => {
         if (!tipoComun) return false; // Tipos completamente distintos → no match
     }
 
-    // 3. Calcular similitud ponderada (tokens de producto valen doble)
-    const pesoToken = (t) => PRODUCT_TYPE_TOKENS.has(t) ? 2 : 1;
-    
+    // 3. Chequeo de adjetivos contradictorios (muy común en materiales)
+    const adjetivosExcluyentes = [
+        ['blanco', 'gris', 'transparente', 'negro'],
+        ['interior', 'exterior'],
+        ['madera', 'concreto', 'metal', 'acero', 'fierro'],
+        ['manual', 'electrico', 'inalambrico']
+    ];
+
     const setA = new Set(tokensA);
     const setB = new Set(tokensB);
-    
-    let pesoInterseccion = 0;
-    let pesoUnion = 0;
-    
-    const union = new Set([...setA, ...setB]);
-    for (const t of union) {
-        const peso = pesoToken(t);
-        pesoUnion += peso;
-        if (setA.has(t) && setB.has(t)) {
-            pesoInterseccion += peso;
+
+    for (const grupo of adjetivosExcluyentes) {
+        const enA = grupo.filter(adj => setA.has(adj));
+        const enB = grupo.filter(adj => setB.has(adj));
+        // Si ambos especifican una característica de este grupo, pero son diferentes
+        if (enA.length > 0 && enB.length > 0) {
+            const interseccion = enA.some(adj => enB.includes(adj));
+            if (!interseccion) {
+                return false; // Contradicción directa (ej. uno es blanco y otro gris)
+            }
         }
     }
 
-    const similitudPonderada = pesoUnion > 0 ? pesoInterseccion / pesoUnion : 0;
-    return similitudPonderada >= umbral;
+    // 4. Calcular similitud difusa usando token_set_ratio de fuzzball
+    // token_set_ratio es muy robusto ante el orden de las palabras y palabras extra de la marca
+    const strA = tokensA.join(' ');
+    const strB = tokensB.join(' ');
+    const ratio = fuzzball.token_set_ratio(strA, strB);
+
+    return ratio >= umbral;
 };
 
 /**
