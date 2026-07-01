@@ -17,41 +17,162 @@
 
 import { ejecutarScrapingDinamico } from '../services/scraping.service.js';
 
-// Términos de construcción a indexar proactivamente
-// Organizados por prioridad: los primeros se ejecutan antes
+/**
+ * Los 100 productos más buscados en el rubro de la construcción en Chile.
+ * Organizados por categoría y prioridad de búsqueda.
+ */
 const TERMINOS_INDEXACION = [
-  // Materiales básicos de alta rotación
+
+  // ══════════════════════════════════════
+  // MATERIALES ESTRUCTURALES (Alta rotación)
+  // ══════════════════════════════════════
   'cemento',
   'varilla corrugada',
   'ladrillo',
   'arena gruesa',
-  'fierro',
-  'yeso',
-  // Herramientas esenciales
-  'martillo',
-  'taladro',
-  'amoladora',
-  'atornillador',
-  'sierra circular',
-  // Pinturas
-  'pintura latex',
-  'esmalte',
-  'barniz madera',
-  // Gasfitería
-  'tubo pvc',
-  'codo pvc',
-  'valvula paso',
-  // Electricidad
-  'cable electrico',
-  'interruptor',
-  'ampolleta led',
-  // Madera
+  'arena fina',
+  'fierro construccion',
+  'malla acero',
+  'bloque hormigon',
+  'perfil metalcon',
+  'volcanita',
+  'yeso construccion',
+  'piedra chancada',
+  'ripio',
+  'gravilla',
+  'estuco',
+  'mortero',
+  'cal hidratada',
+  'hormigon premezclado',
+  'polietileno',
+  'geotextil',
+
+  // ══════════════════════════════════════
+  // MADERA Y TABLEROS
+  // ══════════════════════════════════════
   'terciado estructural',
   'mdf',
-  // Pegamentos / selladores
+  'tabla madera',
+  'listones madera',
+  'viga madera',
+  'pino cepillado',
+  'tablero osb',
+  'melamina',
+  'puertas madera',
+  'molduras madera',
+
+  // ══════════════════════════════════════
+  // TECHUMBRES Y CUBIERTA
+  // ══════════════════════════════════════
+  'teja ceramica',
+  'plancha zinc',
+  'plancha ondulada',
+  'canal aguas lluvia',
+  'impermeabilizante',
+  'membrana asfaltica',
+  'espuma poliuretano',
+  'correa madera',
+  'cumbre',
+  'fieltro asfaltico',
+
+  // ══════════════════════════════════════
+  // PINTURAS Y REVESTIMIENTOS
+  // ══════════════════════════════════════
+  'pintura latex',
+  'pintura esmalte',
+  'pintura exterior',
+  'pintura interior',
+  'barniz madera',
+  'sellador muros',
+  'impermeabilizante muros',
+  'masilla corriente',
+  'revestimiento exterior',
+  'porcelanato',
+  'ceramica bano',
+  'ceramica cocina',
+  'fragua ceramica',
+  'adhesivo ceramica',
+  'tapiz mural',
+
+  // ══════════════════════════════════════
+  // HERRAMIENTAS ELÉCTRICAS
+  // ══════════════════════════════════════
+  'taladro',
+  'amoladora',
+  'sierra circular',
+  'atornillador',
+  'lijadora',
+  'rotomartillo',
+  'compresor aire',
+  'soldadora inverter',
+  'nivel laser',
+  'cortadora ceramica',
+
+  // ══════════════════════════════════════
+  // HERRAMIENTAS MANUALES
+  // ══════════════════════════════════════
+  'martillo',
+  'hacha',
+  'serrucho',
+  'cinta metrica',
+  'nivel burbuja',
+  'llana muros',
+  'fratacho',
+  'espátula',
+  'alicate',
+  'llave inglesa',
+
+  // ══════════════════════════════════════
+  // GASFITERÍA Y SANITARIOS
+  // ══════════════════════════════════════
+  'tubo pvc',
+  'codo pvc',
+  'union pvc',
+  'valvula paso',
+  'llave paso agua',
+  'grifo jardin',
+  'wc inodoro',
+  'lavamanos',
+  'tina bano',
+  'ducha',
+  'medidor agua',
+  'calefon',
+  'termo acumulacion',
+
+  // ══════════════════════════════════════
+  // ELECTRICIDAD
+  // ══════════════════════════════════════
+  'cable electrico',
+  'interruptor',
+  'enchufe electrico',
+  'ampolleta led',
+  'tablero electrico',
+  'disyuntor',
+  'canaleta electrica',
+  'toma corriente',
+
+  // ══════════════════════════════════════
+  // FIJACIONES Y PEGAMENTOS
+  // ══════════════════════════════════════
   'sika',
   'silicona',
-  'masilla',
+  'perno hexagonal',
+  'tornillo madera',
+  'tarugo plastico',
+  'clavo',
+  'adhesivo contacto',
+  'pegamento pvc',
+  'masilla epoxi',
+  'espuma poliuretano expansion',
+
+  // ══════════════════════════════════════
+  // SEGURIDAD LABORAL
+  // ══════════════════════════════════════
+  'casco construccion',
+  'guantes trabajo',
+  'zapatos seguridad',
+  'lentes proteccion',
+  'mascara polvo',
 ];
 
 // ── Control de estado del indexador ──────────────────────────────────────────
@@ -59,7 +180,7 @@ let indexadorActivo = false;
 let intervalHandle = null;
 
 /**
- * Ejecuta la indexación de un término, con reintentos si falla.
+ * Ejecuta la indexación de un término, con manejo de errores.
  */
 const indexarTermino = async (termino) => {
   try {
@@ -106,6 +227,7 @@ export const iniciarIndexadorProactivo = ({ delayInicialMs = 2 * 60_000, interva
   const intervalMs = intervalHoras * 60 * 60 * 1000;
 
   console.log(`[Indexador] Programado: primer ciclo en ${delayInicialMs / 60000} minutos, luego cada ${intervalHoras} horas.`);
+  console.log(`[Indexador] Total de términos a indexar: ${TERMINOS_INDEXACION.length}`);
 
   // Primer ciclo con delay para no interferir con el arranque del servidor
   setTimeout(async () => {
@@ -125,3 +247,8 @@ export const detenerIndexador = () => {
     console.log('[Indexador] Detenido.');
   }
 };
+
+/**
+ * Exporta la lista de términos (útil para tests o inspección).
+ */
+export { TERMINOS_INDEXACION };
