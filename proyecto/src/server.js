@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import path from 'path';
 import apiRoutes from './routes/api.routes.js';
 import { iniciarIndexadorProactivo } from './jobs/indexer.job.js';
 
@@ -21,8 +22,12 @@ app.use(cors({
 }));
 app.use(express.json());
 
-// Rutas
+// Rutas API
 app.use('/api', apiRoutes);
+
+// Servir Frontend Estático
+const frontendPath = path.resolve('C:/Users/lucia/Documents/Dumas/Proyectos Tics/NewFrontend');
+app.use(express.static(frontendPath));
 
 // Health check
 app.get('/health', (req, res) => {
@@ -44,7 +49,7 @@ app.listen(PORT, () => {
   console.log(`✅ Servidor corriendo en http://localhost:${PORT}`);
   console.log(`📋 Endpoints disponibles en http://localhost:${PORT}/api`);
 
-  // Iniciar indexador proactivo: primer ciclo a los 2 minutos, luego cada 6 horas
-  iniciarIndexadorProactivo({ delayInicialMs: 2 * 60_000, intervalHoras: 6 });
-  console.log(`🔍 Indexador proactivo programado (inicio en 2 min, ciclos cada 6h)`);
+  // Iniciar indexador proactivo: arranca casi inmediato (1s) para poblar la DB rápido
+  iniciarIndexadorProactivo({ delayInicialMs: 1000, intervalHoras: 6 });
+  console.log(`🔍 Indexador proactivo programado (inicio INMEDIATO, luego ciclos cada 6h)`);
 });

@@ -391,14 +391,15 @@ const BANNED_TERMS = [
     'televisor', 'smart tv', 'smartphone', 'celular', 'notebook', 'laptop', 'tablet',
     'audifonos', 'parlante bluetooth', 'consola', 'playstation', 'xbox', 'nintendo',
     'videojuego', 'control remoto', 'smartwatch', 'reloj inteligente',
-    // Moda y belleza
+    // Moda, belleza y hogar decorativo
     'perfume', 'colonia', 'maquillaje', 'cosmetico', 'crema facial', 'shampoo',
     'zapatilla running', 'polera', 'camiseta', 'pantalon jeans', 'vestido',
-    'cartera', 'bolso', 'reloj pulsera', 'joya', 'anillo', 'collar',
+    'cartera', 'bolso', 'reloj pulsera', 'reloj de arena', 'reloj de pared', 'reloj ', 'joya', 'anillo', 'collar',
+    'plumon', 'edredon', 'sabana', 'almohada', 'cubrecama', 'cojin', 'cortina', 'toalla',
+    'adorno', 'decorativo', 'cuadro decorativo', 'florero', 'vela aromatica',
     // Mascotas
     'mascota', 'perro', 'gato', 'alimento mascota', 'rascador', 'pecera',
-    // Hogar no-construcción
-    'colchon', 'sabana', 'almohada', 'edredon', 'cubrecama',
+    'sanitaria silica', 'arena sanitaria', 'arena para gato', 'arena de gato',
     // Alimentos y cocina doméstica
     'alimento', 'comida', 'snack', 'chocolate', 'cafe', 'bebida',
     // Deportes no herramienta

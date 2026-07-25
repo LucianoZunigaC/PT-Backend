@@ -1,5 +1,6 @@
 import { prisma } from '../lib/prisma.js';
 import { ejecutarScrapingDinamico } from '../services/scraping.service.js';
+import { agruparEnClusters } from '../services/clustering.service.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/productos/busqueda?q=&cat=&precio_min=&precio_max=&sort=&page=&limit=
@@ -15,10 +16,15 @@ export const buscarProductos = async (req, res, next) => {
     const where = {};
 
     if (q) {
-      where.OR = [
-        { nombre: { contains: q, mode: 'insensitive' } },
-        { marca:  { contains: q, mode: 'insensitive' } },
-      ];
+      const words = q.split(/\s+/).filter(w => w.trim().length > 1);
+      if (words.length > 0) {
+        where.AND = words.map(word => ({
+          OR: [
+            { nombre: { contains: word, mode: 'insensitive' } },
+            { marca:  { contains: word, mode: 'insensitive' } },
+          ]
+        }));
+      }
     }
 
     if (cat) {
@@ -118,7 +124,10 @@ export const buscarProductos = async (req, res, next) => {
       filtrados.sort((a, b) => (b.precios?.length || 0) - (a.precios?.length || 0));
     }
 
-    // Paginación
+    // Clustering semántico (sobre TODOS los resultados filtrados, pre-paginación)
+    const clusters = agruparEnClusters(filtrados);
+
+    // Paginación (aplica sobre la lista plana para retrocompatibilidad)
     const pageNum   = Math.max(1, parseInt(page));
     const limitNum  = Math.min(50, Math.max(1, parseInt(limit)));
     const total     = filtrados.length;
@@ -132,6 +141,7 @@ export const buscarProductos = async (req, res, next) => {
       limit: limitNum, 
       totalPages, 
       facetas,
+      clusters,
       productos: paginados 
     });
   } catch (error) {
